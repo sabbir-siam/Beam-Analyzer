@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { BeamConfig, Support, Load, SupportType, LoadType } from '../types';
+import { BeamConfig, Support, Load, SupportType, LoadType, UnitSystem } from '../types';
 
 interface SidebarProps {
+  unitSystem: UnitSystem;
+  setUnitSystem: (sys: UnitSystem) => void;
   config: BeamConfig;
   setConfig: (c: BeamConfig) => void;
   supports: Support[];
@@ -26,8 +28,9 @@ const DebouncedInput: React.FC<{
   const [localValue, setLocalValue] = useState<string>(value.toString());
 
   useEffect(() => {
-    if (parseFloat(localValue) !== value) {
-      setLocalValue(value.toString());
+    const valParsed = parseFloat(localValue);
+    if (!isNaN(valParsed) && Math.abs(valParsed - value) > 1e-6) {
+      setLocalValue(value.toFixed(3).replace(/\.?0+$/, ''));
     }
   }, [value]);
 
@@ -36,7 +39,7 @@ const DebouncedInput: React.FC<{
     setLocalValue(valStr);
     if (valStr !== "" && !valStr.endsWith(".") && !isNaN(parseFloat(valStr))) {
       const parsed = parseFloat(valStr);
-      if (parsed !== value) {
+      if (Math.abs(parsed - value) > 1e-9) {
         onChange(parsed);
       }
     }
@@ -45,10 +48,10 @@ const DebouncedInput: React.FC<{
   const handleBlur = () => {
     const parsed = parseFloat(localValue);
     if (!isNaN(parsed)) {
-      if (parsed !== value) onChange(parsed);
-      setLocalValue(parsed.toString());
+      if (Math.abs(parsed - value) > 1e-9) onChange(parsed);
+      setLocalValue(parsed.toFixed(3).replace(/\.?0+$/, ''));
     } else {
-      setLocalValue(value.toString());
+      setLocalValue(value.toFixed(3).replace(/\.?0+$/, ''));
     }
   };
 
@@ -69,7 +72,7 @@ const DebouncedInput: React.FC<{
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  config, setConfig, supports, setSupports, loads, setLoads, 
+  unitSystem, setUnitSystem, config, setConfig, supports, setSupports, loads, setLoads, 
   pointOfInterest, setPointOfInterest, displayRange, setDisplayRange 
 }) => {
   const [activeTab, setActiveTab] = useState<'beam' | 'supports' | 'loads'>('beam');
@@ -82,6 +85,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   const updateLoad = (id: string, updates: Partial<Load>) => {
     setLoads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
   };
+
+  const unitMap = {
+    [UnitSystem.MKS]: { l: 'm', e: 'MPa', i: 'mm⁴', f: 'kN', m: 'kNm', w: 'kN/m' },
+    [UnitSystem.FPS]: { l: 'ft', e: 'ksi', i: 'in⁴', f: 'kip', m: 'kip-ft', w: 'kip/ft' }
+  };
+
+  const currentUnits = unitMap[unitSystem];
 
   if (isCollapsed) {
     return (
@@ -126,22 +136,40 @@ const Sidebar: React.FC<SidebarProps> = ({
         {activeTab === 'beam' && (
           <div className="space-y-5 animate-fadeIn">
             <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-700/50 shadow-inner">
+               <label className="block text-[10px] font-black text-indigo-300 uppercase mb-4 tracking-widest">Unit System</label>
+               <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-700">
+                  <button 
+                    onClick={() => setUnitSystem(UnitSystem.MKS)}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${unitSystem === UnitSystem.MKS ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}
+                  >
+                    MKS (Metric)
+                  </button>
+                  <button 
+                    onClick={() => setUnitSystem(UnitSystem.FPS)}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${unitSystem === UnitSystem.FPS ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}
+                  >
+                    FPS (Imperial)
+                  </button>
+               </div>
+            </div>
+
+            <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-700/50 shadow-inner">
               <label className="block text-[10px] font-black text-indigo-300 uppercase mb-4 tracking-widest">Beam Geometry</label>
               <div className="space-y-4">
                 <DebouncedInput 
-                  label="Span Length (m)"
+                  label={`Span Length (${currentUnits.l})`}
                   value={config.length} 
                   onChange={(val) => setConfig({ ...config, length: val })}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:border-indigo-500 outline-none text-sm font-bold shadow-sm"
                 />
                 <DebouncedInput 
-                  label="Elasticity E (MPa)"
+                  label={`Elasticity E (${currentUnits.e})`}
                   value={config.elasticModulus} 
                   onChange={(val) => setConfig({ ...config, elasticModulus: val })}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:border-indigo-500 outline-none text-sm font-bold shadow-sm"
                 />
                 <DebouncedInput 
-                  label="Inertia I (mm⁴)"
+                  label={`Inertia I (${currentUnits.i})`}
                   value={config.momentOfInertia} 
                   onChange={(val) => setConfig({ ...config, momentOfInertia: val })}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:border-indigo-500 outline-none text-sm font-bold shadow-sm"
@@ -150,7 +178,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-700/50">
-               <label className="block text-[10px] font-black text-indigo-300 uppercase mb-4 tracking-widest">Visualization Slice (m)</label>
+               <label className="block text-[10px] font-black text-indigo-300 uppercase mb-4 tracking-widest">{`Visualization Slice (${currentUnits.l})`}</label>
                <div className="flex space-x-3">
                   <div className="flex-1">
                     <span className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Start</span>
@@ -177,7 +205,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   value={pointOfInterest} 
                   onChange={(val) => setPointOfInterest(val)}
                   className="w-full bg-slate-900 border border-indigo-800/40 rounded-xl px-4 py-3 text-white focus:border-indigo-500 outline-none text-sm font-bold pr-10"
-                  unit="m"
+                  unit={currentUnits.l}
                 />
             </div>
           </div>
@@ -207,7 +235,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 <div className="flex items-center space-x-3">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Location:</span>
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{`Loc (${currentUnits.l}):`}</span>
                   <DebouncedInput 
                     value={s.position} 
                     onChange={(val) => updateSupport(s.id, { position: val })}
@@ -244,7 +272,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                 <div className="grid grid-cols-2 gap-3 mb-3">
                    <div>
-                      <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">{l.type === LoadType.UVL ? 'W1 (kN/m)' : 'Value'}:</span>
+                      <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">
+                        {l.type === LoadType.UVL ? `W1 (${currentUnits.w})` : l.type === LoadType.MOMENT ? `Val (${currentUnits.m})` : `Val (${currentUnits.f})`}:
+                      </span>
                       <DebouncedInput 
                         value={l.magnitude} 
                         onChange={(val) => updateLoad(l.id, { magnitude: val })}
@@ -253,7 +283,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                    </div>
                    {l.type === LoadType.UVL && (
                     <div>
-                      <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">W2 (kN/m):</span>
+                      <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">{`W2 (${currentUnits.w}):`}</span>
                       <DebouncedInput 
                         value={l.endMagnitude ?? 0} 
                         onChange={(val) => updateLoad(l.id, { endMagnitude: val })}
@@ -264,7 +294,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                    <div>
-                      <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">Start X (m):</span>
+                      <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">{`Start X (${currentUnits.l}):`}</span>
                       <DebouncedInput 
                         value={l.position} 
                         onChange={(val) => updateLoad(l.id, { position: val })}
@@ -273,7 +303,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                    </div>
                    {(l.type === LoadType.UDL || l.type === LoadType.UVL) && (
                     <div>
-                      <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">End X (m):</span>
+                      <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">{`End X (${currentUnits.l}):`}</span>
                       <DebouncedInput 
                         value={l.endPosition ?? 0} 
                         onChange={(val) => updateLoad(l.id, { endPosition: val })}

@@ -1,5 +1,5 @@
 
-import { SupportType, LoadType, Support, Load, BeamConfig, AnalysisResults, ILDPoint } from './types';
+import { SupportType, LoadType, Support, Load, BeamConfig, AnalysisResults, ILDPoint, UnitSystem } from './types';
 
 class LUSolver {
   n: number;
@@ -87,13 +87,31 @@ function findClosestNodeIndex(nodes: number[], x: number): number {
   return idx;
 }
 
-export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load[], probeX: number): AnalysisResults {
+export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load[], probeX: number, unitSystem: UnitSystem): AnalysisResults {
   const L = config.length;
-  const E = config.elasticModulus * 1e6;
-  const I = config.momentOfInertia * 1e-12;
-  const EI = E * I;
+  const E = config.elasticModulus;
+  const I = config.momentOfInertia;
+  
+  // Base physical constants scaling
+  // MKS: m, kN, mm, MPa -> Internal: m, N
+  // FPS: ft, kip, in, ksi -> Internal: ft, kip
+  let EI: number;
+  let forceFactor: number;
+  let deflectionFactor: number;
 
-  // Safety guard against invalid geometry
+  if (unitSystem === UnitSystem.MKS) {
+    EI = (E * 1e6) * (I * 1e-12); // N.m^2
+    forceFactor = 1000; // kN to N
+    deflectionFactor = 1000; // m to mm
+  } else {
+    // E in ksi, I in in^4
+    // 1 ksi = 144 ksf (kip/ft^2)
+    // 1 in^4 = 1/20736 ft^4
+    EI = (E * 144) * (I / 20736); // kip.ft^2
+    forceFactor = 1; // kip is base force
+    deflectionFactor = 12; // ft to in
+  }
+
   if (L <= 0 || EI <= 0) {
       throw new Error("Invalid beam geometry");
   }
@@ -162,8 +180,6 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
 
   const buildLoadVector = (currentLoads: Load[]) => {
     const F = new Float64Array(totalDof);
-    
-    // Performance optimization: only check elements if distributed loads exist
     const hasDistributed = currentLoads.some(l => l.type === LoadType.UDL || l.type === LoadType.UVL);
     
     if (hasDistributed) {
@@ -179,8 +195,8 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
               const wStart = load.magnitude, wEnd = load.type === LoadType.UVL ? (load.endMagnitude ?? wStart) : wStart;
               const t1 = (xA - load.position) / (load.endPosition! - load.position);
               const t2 = (xB - load.position) / (load.endPosition! - load.position);
-              const q1 = (wStart + (wEnd - wStart) * t1) * 1000;
-              const q2 = (wStart + (wEnd - wStart) * t2) * 1000;
+              const q1 = (wStart + (wEnd - wStart) * t1) * forceFactor;
+              const q2 = (wStart + (wEnd - wStart) * t2) * forceFactor;
               const loadLen = xB - xA;
               const totalW = (q1 + q2) * loadLen / 2;
               fe[0] -= totalW / 2;
@@ -209,10 +225,10 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
     currentLoads.forEach(load => {
       if (load.type === LoadType.POINT) {
         const idx = findClosestNodeIndex(finalNodes, load.position);
-        F[idx * 2] -= load.magnitude * 1000;
+        F[idx * 2] -= load.magnitude * forceFactor;
       } else if (load.type === LoadType.MOMENT) {
         const idx = findClosestNodeIndex(finalNodes, load.position);
-        F[idx * 2 + 1] += load.magnitude * 1000;
+        F[idx * 2 + 1] += load.magnitude * forceFactor;
       }
     });
     return Array.from(F);
@@ -239,8 +255,8 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
           const wStart = load.magnitude, wEnd = load.type === LoadType.UVL ? (load.endMagnitude ?? wStart) : wStart;
           const t1 = (xA - load.position) / (load.endPosition! - load.position);
           const t2 = (xB - load.position) / (load.endPosition! - load.position);
-          const q1 = (wStart + (wEnd - wStart) * t1) * 1000;
-          const q2 = (wStart + (wEnd - wStart) * t2) * 1000;
+          const q1 = (wStart + (wEnd - wStart) * t1) * forceFactor;
+          const q2 = (wStart + (wEnd - wStart) * t2) * forceFactor;
           const loadLen = xB - xA;
           fe[0] -= (q1 + q2) * loadLen / 4;
           fe[2] -= (q1 + q2) * loadLen / 4;
@@ -265,12 +281,12 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
       }
     }
 
-    if (nodeIdx === elemIdx) return { shear: f[0] / 1000, moment: -f[1] / 1000 };
-    return { shear: -f[2] / 1000, moment: f[3] / 1000 };
+    if (nodeIdx === elemIdx) return { shear: f[0] / forceFactor, moment: -f[1] / forceFactor };
+    return { shear: -f[2] / forceFactor, moment: f[3] / forceFactor };
   };
 
   const shear: number[] = Array(numNodes).fill(0), moment: number[] = Array(numNodes).fill(0);
-  const deflection: number[] = U.filter((_, i) => i % 2 === 0).map(v => v * 1000);
+  const deflection: number[] = U.filter((_, i) => i % 2 === 0).map(v => v * deflectionFactor);
   
   for (let i = 0; i < numNodes; i++) {
     const int = getInternalAt(U, finalNodes[i], loads);
@@ -280,8 +296,8 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
 
   const reactions = supports.filter(s => s.type !== SupportType.HINGE).map((s, idx) => {
     const nIdx = findClosestNodeIndex(finalNodes, s.position);
-    const f = (penalty * U[nIdx * 2]) / -1000;
-    const m = (s.type === SupportType.FIXED ? (penalty * U[nIdx * 2 + 1]) / 1000 : 0);
+    const f = (penalty * U[nIdx * 2]) / -forceFactor;
+    const m = (s.type === SupportType.FIXED ? (penalty * U[nIdx * 2 + 1]) / forceFactor : 0);
     return { position: s.position, force: f, moment: m, label: `R${idx + 1}`, id: s.id };
   });
 
@@ -305,7 +321,7 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
       supports.forEach(s => {
         if(s.type === SupportType.HINGE) return;
         const nIdx = findClosestNodeIndex(finalNodes, s.position);
-        ildReactions[s.id].push({ x, value: (penalty * U_ild[nIdx * 2]) / -1000 });
+        ildReactions[s.id].push({ x, value: (penalty * U_ild[nIdx * 2]) / -forceFactor });
       });
 
       const side = x <= probeX ? 'right' : 'left'; 

@@ -1,8 +1,9 @@
 
 import React from 'react';
-import { BeamConfig, Support, Load, SupportType, LoadType, AnalysisResults } from '../types';
+import { BeamConfig, Support, Load, SupportType, LoadType, AnalysisResults, UnitSystem } from '../types';
 
 interface SchematicViewProps {
+  unitSystem: UnitSystem;
   config: BeamConfig;
   supports: Support[];
   loads: Load[];
@@ -11,7 +12,7 @@ interface SchematicViewProps {
   setPointOfInterest: (x: number) => void;
 }
 
-const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, results, pointOfInterest, setPointOfInterest }) => {
+const SchematicView: React.FC<SchematicViewProps> = ({ unitSystem, config, supports, loads, results, pointOfInterest, setPointOfInterest }) => {
   const width = 800;
   const height = 280;
   const margin = 80;
@@ -28,6 +29,10 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
   }, 1);
 
   const MAX_VISUAL_LOAD_HEIGHT = 80;
+
+  const unitLabels = unitSystem === UnitSystem.MKS 
+    ? { l: 'm', f: 'kN', m: 'kNm', w: 'kN/m' } 
+    : { l: 'ft', f: 'kip', m: 'kip-ft', w: 'kip/ft' };
 
   return (
     <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-xl p-6 sm:p-8 relative">
@@ -62,7 +67,7 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
         <div className="flex items-center space-x-4">
           <div className="bg-slate-900 px-5 py-2 rounded-xl border border-slate-800 flex items-center space-x-3 shadow-inner">
             <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
-            <span className="text-xl font-black text-white font-mono">{pointOfInterest.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1 uppercase">m</span></span>
+            <span className="text-xl font-black text-white font-mono">{pointOfInterest.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1 uppercase">{unitLabels.l}</span></span>
           </div>
         </div>
       </div>
@@ -82,9 +87,9 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
           <g transform={`translate(0, ${beamY + 60})`}>
             <line x1={margin} y1="0" x2={width - margin} y2="0" stroke="#cbd5e1" strokeWidth="2" />
             <line x1={margin} y1="-8" x2={margin} y2="8" stroke="#94a3b8" strokeWidth="2" />
-            <text x={margin} y="22" textAnchor="middle" className="text-[10px] font-black fill-slate-400">0 m</text>
+            <text x={margin} y="22" textAnchor="middle" className="text-[10px] font-black fill-slate-400">0 {unitLabels.l}</text>
             <line x1={width - margin} y1="-8" x2={width - margin} y2="8" stroke="#94a3b8" strokeWidth="2" />
-            <text x={width - margin} y="22" textAnchor="middle" className="text-[10px] font-black fill-slate-400">{config.length.toFixed(2)} m</text>
+            <text x={width - margin} y="22" textAnchor="middle" className="text-[10px] font-black fill-slate-400">{config.length.toFixed(2)} {unitLabels.l}</text>
           </g>
 
           <line x1={margin} y1={beamY} x2={width - margin} y2={beamY} stroke="#0f172a" strokeWidth="8" strokeLinecap="round" />
@@ -132,7 +137,7 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
               return (
                 <g key={l.id} transform={`translate(${x}, ${beamY - 80})`}>
                   <line x1="0" y1="0" x2="0" y2="72" stroke="#ef4444" strokeWidth="4" markerEnd="url(#arrowhead-red-large)" />
-                  <text x="0" y="-12" textAnchor="middle" className="text-[12px] font-black fill-red-700">{l.magnitude} kN</text>
+                  <text x="0" y="-12" textAnchor="middle" className="text-[12px] font-black fill-red-700">{l.magnitude.toFixed(2)} {unitLabels.f}</text>
                 </g>
               );
             }
@@ -155,7 +160,7 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
                       return <line key={j} x1={lx} y1={-h} x2={lx} y2="-2" stroke="#ef4444" strokeWidth="1.5" />;
                    })}
                    <text x={udlWidth/2} y={-Math.max(hStart, hEnd) - 10} textAnchor="middle" className="text-[11px] font-black fill-red-700">
-                      {l.type === LoadType.UVL ? `${l.magnitude} → ${l.endMagnitude} kN/m` : `${l.magnitude} kN/m`}
+                      {l.type === LoadType.UVL ? `${l.magnitude.toFixed(2)} → ${l.endMagnitude?.toFixed(2)} ${unitLabels.w}` : `${l.magnitude.toFixed(2)} ${unitLabels.w}`}
                    </text>
                  </g>
                );
@@ -164,7 +169,7 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
                return (
                  <g key={l.id} transform={`translate(${x}, ${beamY})`}>
                    <path d="M -30 -30 A 35 35 0 1 1 30 -30" fill="none" stroke="#6366f1" strokeWidth="3" strokeLinecap="round" />
-                   <text x="0" y="-50" textAnchor="middle" className="text-[12px] font-black fill-indigo-700">{l.magnitude} kNm</text>
+                   <text x="0" y="-50" textAnchor="middle" className="text-[12px] font-black fill-indigo-700">{l.magnitude.toFixed(2)} {unitLabels.m}</text>
                  </g>
                )
             }

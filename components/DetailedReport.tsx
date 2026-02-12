@@ -1,8 +1,9 @@
 
 import React from 'react';
-import { AnalysisResults, BeamConfig, Support, Load } from '../types';
+import { AnalysisResults, BeamConfig, Support, Load, UnitSystem } from '../types';
 
 interface DetailedReportProps {
+  unitSystem: UnitSystem;
   results: AnalysisResults;
   config: BeamConfig;
   supports: Support[];
@@ -10,10 +11,17 @@ interface DetailedReportProps {
   onClose: () => void;
 }
 
-const DetailedReport: React.FC<DetailedReportProps> = ({ results, config, supports, loads, onClose }) => {
-  const E_Pa = config.elasticModulus * 1e6;
-  const I_m4 = config.momentOfInertia * 1e-12;
-  const EI = E_Pa * I_m4;
+const DetailedReport: React.FC<DetailedReportProps> = ({ unitSystem, results, config, supports, loads, onClose }) => {
+  const unitLabels = unitSystem === UnitSystem.MKS 
+    ? { l: 'm', f: 'kN', m: 'kNm', s: 'MPa', i: 'mm⁴', d: 'mm', ei: 'kN·m²' } 
+    : { l: 'ft', f: 'kip', m: 'kip-ft', s: 'ksi', i: 'in⁴', d: 'in', ei: 'kip·ft²' };
+
+  let calculatedEI: number;
+  if (unitSystem === UnitSystem.MKS) {
+    calculatedEI = (config.elasticModulus * 1e6) * (config.momentOfInertia * 1e-12) / 1000; // kN.m2
+  } else {
+    calculatedEI = (config.elasticModulus * 144) * (config.momentOfInertia / 20736); // kip.ft2
+  }
 
   const handlePrint = () => {
     window.print();
@@ -93,6 +101,7 @@ const DetailedReport: React.FC<DetailedReportProps> = ({ results, config, suppor
               </div>
               <div className="text-right border-l-2 border-slate-100 pl-8">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Report Status: Verified</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">System: {unitSystem}</p>
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Date: {new Date().toLocaleDateString('en-GB')}</p>
               </div>
             </div>
@@ -105,20 +114,20 @@ const DetailedReport: React.FC<DetailedReportProps> = ({ results, config, suppor
              </div>
              <div className="grid grid-cols-2 sm:grid-cols-4 gap-12 bg-slate-50 p-10 rounded-3xl border border-slate-100">
                 <div className="space-y-2">
-                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Span Length</span>
-                   <p className="text-2xl font-black text-slate-900">{config.length} m</p>
+                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{`Span Length (${unitLabels.l})`}</span>
+                   <p className="text-2xl font-black text-slate-900">{config.length.toFixed(2)}</p>
                 </div>
                 <div className="space-y-2">
-                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Elastic Modulus</span>
-                   <p className="text-2xl font-black text-slate-900">{config.elasticModulus} MPa</p>
+                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{`Elastic Modulus (${unitLabels.s})`}</span>
+                   <p className="text-2xl font-black text-slate-900">{config.elasticModulus.toFixed(0)}</p>
                 </div>
                 <div className="space-y-2">
-                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Inertia (I)</span>
-                   <p className="text-2xl font-black text-slate-900">{config.momentOfInertia} mm⁴</p>
+                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">{`Inertia I (${unitLabels.i})`}</span>
+                   <p className="text-2xl font-black text-slate-900">{config.momentOfInertia.toFixed(0)}</p>
                 </div>
                 <div className="space-y-2">
-                   <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block">Calculated EI</span>
-                   <p className="text-2xl font-black text-indigo-600">{(EI/1000).toFixed(2)} kN·m²</p>
+                   <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block">{`Calculated EI (${unitLabels.ei})`}</span>
+                   <p className="text-2xl font-black text-indigo-600">{calculatedEI.toFixed(2)}</p>
                 </div>
              </div>
           </section>
@@ -133,13 +142,13 @@ const DetailedReport: React.FC<DetailedReportProps> = ({ results, config, suppor
                   <thead className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
                     <tr>
                       <th className="px-8 py-6">Reaction Label</th>
-                      <th className="px-8 py-6 text-right">Vertical Force (kN)</th>
+                      <th className="px-8 py-6 text-right">{`Vertical Force (${unitLabels.f})`}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
                     {results.reactions.map((r, i) => (
                       <tr key={i}>
-                        <td className="px-8 py-5 font-black text-indigo-600 uppercase">{r.label} at {r.position}m</td>
+                        <td className="px-8 py-5 font-black text-indigo-600 uppercase">{`${r.label} at ${r.position.toFixed(2)}${unitLabels.l}`}</td>
                         <td className="px-8 py-5 text-right font-black text-slate-900">{r.force.toFixed(3)}</td>
                       </tr>
                     ))}
@@ -154,8 +163,8 @@ const DetailedReport: React.FC<DetailedReportProps> = ({ results, config, suppor
                 <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">3. Stress & Displacement Profiles</h3>
              </div>
              <div className="grid grid-cols-1 gap-12">
-                <MiniGraph data={results.shearForce} color="#2563eb" yLabel="Shear (kN)" type="step" />
-                <MiniGraph data={results.bendingMoment} color="#4f46e5" yLabel="Moment (kNm)" type="line" />
+                <MiniGraph data={results.shearForce} color="#2563eb" yLabel={`Shear (${unitLabels.f})`} type="step" />
+                <MiniGraph data={results.bendingMoment} color="#4f46e5" yLabel={`Moment (${unitLabels.m})`} type="line" />
              </div>
           </section>
 

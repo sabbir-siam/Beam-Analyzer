@@ -1,16 +1,17 @@
 
 import React, { useState, memo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line } from 'recharts';
-import { AnalysisResults, BeamConfig, ILDType } from '../types';
+import { AnalysisResults, BeamConfig, ILDType, UnitSystem } from '../types';
 
 interface ResultsDashboardProps {
+  unitSystem: UnitSystem;
   results: AnalysisResults | null;
   config: BeamConfig;
   pointOfInterest: number;
   displayRange: {start: number, end: number};
 }
 
-const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, pointOfInterest, displayRange }) => {
+const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ unitSystem, results, config, pointOfInterest, displayRange }) => {
   const [activeView, setActiveView] = useState<'sfd' | 'bmd' | 'def' | 'ild'>('sfd');
   const [ildMode, setIldMode] = useState<ILDType>(ILDType.REACTION);
   const [selectedReactionId, setSelectedReactionId] = useState<string>('');
@@ -36,12 +37,9 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
     deflection: parseFloat(results.deflection[i].toFixed(3))
   }));
 
-  let closestIdx = 0;
-  let minDiff = Infinity;
-  results.nodes.forEach((x, i) => {
-    const d = Math.abs(x - pointOfInterest);
-    if (d < minDiff) { minDiff = d; closestIdx = i; }
-  });
+  const unitLabels = unitSystem === UnitSystem.MKS 
+    ? { l: 'm', f: 'kN', m: 'kNm', d: 'mm' } 
+    : { l: 'ft', f: 'kip', m: 'kip-ft', d: 'in' };
 
   let ildData: {x: number, value: number}[] = [];
 
@@ -57,7 +55,6 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
 
   const filteredIldData = ildData.filter(p => p.x >= displayRange.start && p.x <= displayRange.end);
 
-  // Buffer calculation for Y-Axis scaling
   const getYDomain = (dataKey: string) => {
     const vals = chartData.map(d => (d as any)[dataKey]);
     if (vals.length === 0) return [0, 1];
@@ -113,20 +110,19 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
                 onChange={(e) => setSelectedReactionId(e.target.value)}
                 className="bg-white border border-slate-200 rounded-lg px-4 py-1.5 text-[10px] font-black outline-none cursor-pointer focus:border-indigo-500"
               >
-                {results.reactions.map(r => <option key={r.id} value={r.id}>{r.label} at {r.position}m</option>)}
+                {results.reactions.map(r => <option key={r.id} value={r.id}>{r.label} at {r.position.toFixed(2)}{unitLabels.l}</option>)}
               </select>
             </div>
           )}
         </div>
       )}
 
-      {/* Responsive Graph Container */}
       <div className="h-[300px] sm:h-[400px] lg:h-[450px] w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           {activeView === 'ild' ? (
             <LineChart data={filteredIldData} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis dataKey="x" tick={{fontSize: 10, fontWeight: 600}} unit="m" />
+              <XAxis dataKey="x" tick={{fontSize: 10, fontWeight: 600}} unit={unitLabels.l} />
               <YAxis tick={{fontSize: 10, fontWeight: 600}} domain={['auto', 'auto']} />
               <Tooltip 
                 contentStyle={{ fontSize: '11px', fontWeight: 'bold', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} 
@@ -143,13 +139,14 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
                 <linearGradient id="gradDef" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis dataKey="x" tick={{fontSize: 10, fontWeight: 600}} unit="m" />
+              <XAxis dataKey="x" tick={{fontSize: 10, fontWeight: 600}} unit={unitLabels.l} />
               <YAxis 
                 tick={{fontSize: 10, fontWeight: 600}} 
                 domain={activeView === 'sfd' ? getYDomain('shear') : activeView === 'bmd' ? getYDomain('moment') : getYDomain('deflection')} 
               />
               <Tooltip 
                 contentStyle={{ fontSize: '11px', fontWeight: 'bold', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                formatter={(val: any) => [parseFloat(val).toFixed(3), activeView === 'sfd' ? unitLabels.f : activeView === 'bmd' ? unitLabels.m : unitLabels.d]}
               />
               <ReferenceLine y={0} stroke="#94a3b8" strokeWidth={2} />
               
@@ -174,15 +171,15 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-100 shadow-inner">
          <div className="space-y-1">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Max Abs Shear</p>
-            <p className="text-xl font-black text-blue-600 font-mono">{Math.max(Math.abs(results.maxShear), Math.abs(results.minShear)).toFixed(2)} <span className="text-[10px]">kN</span></p>
+            <p className="text-xl font-black text-blue-600 font-mono">{Math.max(Math.abs(results.maxShear), Math.abs(results.minShear)).toFixed(2)} <span className="text-[10px]">{unitLabels.f}</span></p>
          </div>
          <div className="space-y-1">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Max Abs Moment</p>
-            <p className="text-xl font-black text-indigo-600 font-mono">{Math.max(Math.abs(results.maxMoment), Math.abs(results.minMoment)).toFixed(2)} <span className="text-[10px]">kNm</span></p>
+            <p className="text-xl font-black text-indigo-600 font-mono">{Math.max(Math.abs(results.maxMoment), Math.abs(results.minMoment)).toFixed(2)} <span className="text-[10px]">{unitLabels.m}</span></p>
          </div>
          <div className="space-y-1">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Peak Deflection</p>
-            <p className="text-xl font-black text-emerald-600 font-mono">{Math.max(Math.abs(results.maxDeflection), Math.abs(results.minDeflection)).toFixed(3)} <span className="text-[10px]">mm</span></p>
+            <p className="text-xl font-black text-emerald-600 font-mono">{Math.max(Math.abs(results.maxDeflection), Math.abs(results.minDeflection)).toFixed(3)} <span className="text-[10px]">{unitLabels.d}</span></p>
          </div>
          <div className="space-y-1">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Design Class</p>

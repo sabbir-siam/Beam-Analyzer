@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useDeferredValue, memo, useCallback } from 'react';
-import { Support, Load, BeamConfig, SupportType, LoadType, AnalysisResults } from './types';
+import { Support, Load, BeamConfig, SupportType, LoadType, AnalysisResults, UnitSystem } from './types';
 import { analyzeBeam } from './solver';
 import Sidebar from './components/Sidebar';
 import SchematicView from './components/SchematicView';
@@ -26,6 +26,7 @@ const INITIAL_LOADS: Load[] = [
 ];
 
 const App: React.FC = () => {
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(UnitSystem.MKS);
   const [config, setConfig] = useState<BeamConfig>(INITIAL_CONFIG);
   const [supports, setSupports] = useState<Support[]>(INITIAL_SUPPORTS);
   const [loads, setLoads] = useState<Load[]>(INITIAL_LOADS);
@@ -41,6 +42,7 @@ const App: React.FC = () => {
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
+        if (parsed.unitSystem) setUnitSystem(parsed.unitSystem);
         if (parsed.config) setConfig(parsed.config);
         if (parsed.supports) setSupports(parsed.supports);
         if (parsed.loads) setLoads(parsed.loads);
@@ -59,7 +61,7 @@ const App: React.FC = () => {
       try {
         if (config.length < 0.01 || config.elasticModulus <= 0 || config.momentOfInertia <= 0) return;
         setIsCalculating(true);
-        const res = analyzeBeam(config, supports, loads, pointOfInterest);
+        const res = analyzeBeam(config, supports, loads, pointOfInterest, unitSystem);
         setResults(res);
         setIsCalculating(false);
       } catch (err) {
@@ -68,20 +70,53 @@ const App: React.FC = () => {
       }
     };
 
-    // 400ms debounce ensures smooth typing even for complex fractions like 2.5
     const timer = setTimeout(runAnalysis, 400); 
     return () => clearTimeout(timer);
-  }, [config, supports, loads, pointOfInterest, isLoaded]);
+  }, [config, supports, loads, pointOfInterest, isLoaded, unitSystem]);
 
   useEffect(() => {
     if (isLoaded) {
-      const dataToSave = JSON.stringify({ config, supports, loads, poi: pointOfInterest });
+      const dataToSave = JSON.stringify({ unitSystem, config, supports, loads, poi: pointOfInterest });
       localStorage.setItem('beamData', dataToSave);
     }
-  }, [config, supports, loads, pointOfInterest, isLoaded]);
+  }, [unitSystem, config, supports, loads, pointOfInterest, isLoaded]);
+
+  const handleUnitToggle = (newSystem: UnitSystem) => {
+    if (newSystem === unitSystem) return;
+
+    // Conversion factors MKS -> FPS
+    const lFactor = 3.28084;
+    const fFactor = 0.224809;
+    const sFactor = 0.145038; // MPa to ksi
+    const iFactor = 2.40251e-6; // mm4 to in4
+
+    const forward = newSystem === UnitSystem.FPS;
+    const lf = forward ? lFactor : 1/lFactor;
+    const ff = forward ? fFactor : 1/fFactor;
+    const sf = forward ? sFactor : 1/sFactor;
+    const iff = forward ? iFactor : 1/iFactor;
+
+    setUnitSystem(newSystem);
+    setConfig(prev => ({
+      length: prev.length * lf,
+      elasticModulus: prev.elasticModulus * sf,
+      momentOfInertia: prev.momentOfInertia * iff
+    }));
+    setSupports(prev => prev.map(s => ({ ...s, position: s.position * lf })));
+    setLoads(prev => prev.map(l => ({ 
+      ...l, 
+      magnitude: l.magnitude * ff, 
+      endMagnitude: l.endMagnitude !== undefined ? l.endMagnitude * ff : undefined,
+      position: l.position * lf,
+      endPosition: l.endPosition !== undefined ? l.endPosition * lf : undefined
+    })));
+    setPointOfInterest(prev => prev * lf);
+    setDisplayRange(prev => ({ start: prev.start * lf, end: prev.end * lf }));
+  };
 
   const handleReset = useCallback(() => {
     localStorage.removeItem('beamData');
+    setUnitSystem(UnitSystem.MKS);
     setConfig({ ...INITIAL_CONFIG });
     setSupports(INITIAL_SUPPORTS.map(s => ({ ...s })));
     setLoads(INITIAL_LOADS.map(l => ({ ...l })));
@@ -96,6 +131,8 @@ const App: React.FC = () => {
     <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-900">
       <div className="h-full flex-shrink-0 z-20 no-print">
         <Sidebar 
+          unitSystem={unitSystem}
+          setUnitSystem={handleUnitToggle}
           config={config} 
           setConfig={setConfig}
           supports={supports}
@@ -149,6 +186,7 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-4 sm:p-10 space-y-12 custom-scrollbar no-print scroll-smooth">
           <section className="animate-fadeIn">
             <MemoizedSchematic 
+              unitSystem={unitSystem}
               config={config} 
               supports={supports} 
               loads={loads} 
@@ -160,6 +198,7 @@ const App: React.FC = () => {
 
           <section className="animate-slideUp">
             <MemoizedResults 
+              unitSystem={unitSystem}
               results={results} 
               config={config} 
               pointOfInterest={pointOfInterest} 
@@ -178,6 +217,7 @@ const App: React.FC = () => {
 
         {isReportVisible && results && (
           <DetailedReport 
+            unitSystem={unitSystem}
             results={results} 
             config={config} 
             supports={supports} 

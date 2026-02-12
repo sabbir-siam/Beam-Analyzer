@@ -19,6 +19,11 @@ export enum ILDType {
   MOMENT = 'MOMENT'
 }
 
+export enum UnitSystem {
+  MKS = 'MKS',
+  FPS = 'FPS'
+}
+
 export interface Support {
   id: string;
   type: SupportType;
