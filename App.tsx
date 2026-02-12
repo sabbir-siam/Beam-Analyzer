@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useDeferredValue, memo } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue, memo, useCallback } from 'react';
 import { Support, Load, BeamConfig, SupportType, LoadType, AnalysisResults } from './types';
 import { analyzeBeam } from './solver';
 import Sidebar from './components/Sidebar';
@@ -10,40 +10,41 @@ import DetailedReport from './components/DetailedReport';
 const MemoizedSchematic = memo(SchematicView);
 const MemoizedResults = memo(ResultsDashboard);
 
+const INITIAL_CONFIG: BeamConfig = {
+  length: 10,
+  elasticModulus: 200000, 
+  momentOfInertia: 500000000 
+};
+
+const INITIAL_SUPPORTS: Support[] = [
+  { id: '1', type: SupportType.PINNED, position: 0 },
+  { id: '2', type: SupportType.ROLLER, position: 10 }
+];
+
+const INITIAL_LOADS: Load[] = [
+  { id: 'l1', type: LoadType.UDL, magnitude: 10, position: 0, endPosition: 10 }
+];
+
 const App: React.FC = () => {
-  const initialConfig: BeamConfig = {
-    length: 10,
-    elasticModulus: 200000, 
-    momentOfInertia: 500000000 
-  };
-
-  const initialSupports: Support[] = [
-    { id: '1', type: SupportType.PINNED, position: 0 },
-    { id: '2', type: SupportType.ROLLER, position: 10 }
-  ];
-
-  const initialLoads: Load[] = [
-    { id: 'l1', type: LoadType.UDL, magnitude: 10, position: 0, endPosition: 10 }
-  ];
-
-  const [config, setConfig] = useState<BeamConfig>(initialConfig);
-  const [supports, setSupports] = useState<Support[]>(initialSupports);
-  const [loads, setLoads] = useState<Load[]>(initialLoads);
+  const [config, setConfig] = useState<BeamConfig>(INITIAL_CONFIG);
+  const [supports, setSupports] = useState<Support[]>(INITIAL_SUPPORTS);
+  const [loads, setLoads] = useState<Load[]>(INITIAL_LOADS);
   const [pointOfInterest, setPointOfInterest] = useState<number>(5);
   const [displayRange, setDisplayRange] = useState<{start: number, end: number}>({start: 0, end: 10});
+  const [results, setResults] = useState<AnalysisResults | null>(null);
   const [isReportVisible, setIsReportVisible] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false);
 
-  // Persistence: Load data from LocalStorage on mount
   useEffect(() => {
     const savedData = localStorage.getItem('beamData');
     if (savedData) {
       try {
-        const { config, supports, loads, poi } = JSON.parse(savedData);
-        setConfig(config);
-        setSupports(supports);
-        setLoads(loads);
-        setPointOfInterest(poi);
+        const parsed = JSON.parse(savedData);
+        if (parsed.config) setConfig(parsed.config);
+        if (parsed.supports) setSupports(parsed.supports);
+        if (parsed.loads) setLoads(parsed.loads);
+        if (typeof parsed.poi === 'number') setPointOfInterest(parsed.poi);
       } catch (e) {
         console.error("Failed to parse stored beam data", e);
       }
@@ -51,7 +52,27 @@ const App: React.FC = () => {
     setIsLoaded(true);
   }, []);
 
-  // Persistence: Save data to LocalStorage on change
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    const runAnalysis = () => {
+      try {
+        if (config.length < 0.01 || config.elasticModulus <= 0 || config.momentOfInertia <= 0) return;
+        setIsCalculating(true);
+        const res = analyzeBeam(config, supports, loads, pointOfInterest);
+        setResults(res);
+        setIsCalculating(false);
+      } catch (err) {
+        console.error("Analysis Error:", err);
+        setIsCalculating(false);
+      }
+    };
+
+    // 400ms debounce ensures smooth typing even for complex fractions like 2.5
+    const timer = setTimeout(runAnalysis, 400); 
+    return () => clearTimeout(timer);
+  }, [config, supports, loads, pointOfInterest, isLoaded]);
+
   useEffect(() => {
     if (isLoaded) {
       const dataToSave = JSON.stringify({ config, supports, loads, poi: pointOfInterest });
@@ -59,29 +80,15 @@ const App: React.FC = () => {
     }
   }, [config, supports, loads, pointOfInterest, isLoaded]);
 
-  const deferredConfig = useDeferredValue(config);
-  const deferredSupports = useDeferredValue(supports);
-  const deferredLoads = useDeferredValue(loads);
-  const deferredPOI = useDeferredValue(pointOfInterest);
-
-  const results = useMemo(() => {
-    try {
-      return analyzeBeam(deferredConfig, deferredSupports, deferredLoads, deferredPOI);
-    } catch (err) {
-      console.error("Analysis Error:", err);
-      return null;
-    }
-  }, [deferredConfig, deferredSupports, deferredLoads, deferredPOI]);
-
-  const handleReset = () => {
-    if (window.confirm("Are you sure you want to reset all configurations?")) {
-      setConfig(initialConfig);
-      setSupports(initialSupports);
-      setLoads(initialLoads);
-      setPointOfInterest(5);
-      setDisplayRange({start: 0, end: 10});
-    }
-  };
+  const handleReset = useCallback(() => {
+    localStorage.removeItem('beamData');
+    setConfig({ ...INITIAL_CONFIG });
+    setSupports(INITIAL_SUPPORTS.map(s => ({ ...s })));
+    setLoads(INITIAL_LOADS.map(l => ({ ...l })));
+    setPointOfInterest(5);
+    setDisplayRange({start: 0, end: 10});
+    setResults(null);
+  }, []);
 
   if (!isLoaded) return null;
 
@@ -113,23 +120,26 @@ const App: React.FC = () => {
                 BEAM<span className="text-indigo-600">ANALYZER</span>
                </h1>
                <div className="flex items-center space-x-2 mt-0.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                  <span className="text-[9px] font-black text-slate-400 tracking-widest uppercase">FEM Engine Online</span>
+                  <div className={`w-1.5 h-1.5 rounded-full ${isCalculating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
+                  <span className="text-[9px] font-black text-slate-400 tracking-widest uppercase">
+                    {isCalculating ? 'Solving Matrices...' : 'FEM Engine Online'}
+                  </span>
                </div>
             </div>
           </div>
           
-          <div className="flex items-center space-x-6">
-             <div className="hidden md:block text-right">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">System Status</p>
-                <p className={`text-xs font-bold ${results?.isStable ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {results?.isStable ? 'Equilibrium Active' : 'Instability Detected'}
-                </p>
-             </div>
-             <div className="h-8 w-px bg-slate-200 hidden md:block"></div>
+          <div className="flex items-center space-x-4">
+             <button 
+               onClick={handleReset}
+               className="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center space-x-2"
+             >
+                <i className="fas fa-undo-alt"></i>
+                <span>Reset</span>
+             </button>
              <button 
                onClick={() => setIsReportVisible(true)}
-               className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-slate-200 active:scale-95"
+               disabled={!results}
+               className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95"
              >
                 Full Report
              </button>
@@ -139,21 +149,20 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-4 sm:p-10 space-y-12 custom-scrollbar no-print scroll-smooth">
           <section className="animate-fadeIn">
             <MemoizedSchematic 
-              config={deferredConfig} 
-              supports={deferredSupports} 
-              loads={deferredLoads} 
+              config={config} 
+              supports={supports} 
+              loads={loads} 
               results={results}
               pointOfInterest={pointOfInterest}
               setPointOfInterest={setPointOfInterest}
-              onReset={handleReset}
             />
           </section>
 
           <section className="animate-slideUp">
             <MemoizedResults 
               results={results} 
-              config={deferredConfig} 
-              pointOfInterest={deferredPOI} 
+              config={config} 
+              pointOfInterest={pointOfInterest} 
               displayRange={displayRange}
             />
           </section>
@@ -177,13 +186,6 @@ const App: React.FC = () => {
           />
         )}
       </div>
-      
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fadeIn { animation: fadeIn 0.6s ease-out; }
-        .animate-slideUp { animation: slideUp 0.6s ease-out; }
-      `}</style>
     </div>
   );
 };

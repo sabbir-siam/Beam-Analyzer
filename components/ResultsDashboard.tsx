@@ -15,12 +15,18 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
   const [ildMode, setIldMode] = useState<ILDType>(ILDType.REACTION);
   const [selectedReactionId, setSelectedReactionId] = useState<string>('');
 
-  if (!results) return null;
+  if (!results || !results.nodes || results.nodes.length === 0) return null;
 
   const filteredIndices = results.nodes.reduce((acc, x, i) => {
     if (x >= displayRange.start && x <= displayRange.end) acc.push(i);
     return acc;
   }, [] as number[]);
+
+  if (filteredIndices.length === 0) return (
+    <div className="bg-white p-10 rounded-3xl border border-slate-200 shadow-xl flex items-center justify-center h-96">
+      <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No data in selected display range</p>
+    </div>
+  );
 
   const chartData = filteredIndices.map(i => ({
     x: results.nodes[i].toFixed(2),
@@ -37,12 +43,6 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
     if (d < minDiff) { minDiff = d; closestIdx = i; }
   });
 
-  const poiValues = {
-    shear: results.shearForce[closestIdx],
-    moment: results.bendingMoment[closestIdx],
-    deflection: results.deflection[closestIdx]
-  };
-
   let ildData: {x: number, value: number}[] = [];
 
   if (ildMode === ILDType.REACTION) {
@@ -50,9 +50,9 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
     const currentId = selectedReactionId || firstId;
     ildData = results.ildReactions[currentId] || [];
   } else if (ildMode === ILDType.SHEAR) {
-    ildData = results.ildShearAtProbe;
+    ildData = results.ildShearAtProbe || [];
   } else if (ildMode === ILDType.MOMENT) {
-    ildData = results.ildMomentAtProbe;
+    ildData = results.ildMomentAtProbe || [];
   }
 
   const filteredIldData = ildData.filter(p => p.x >= displayRange.start && p.x <= displayRange.end);
@@ -60,6 +60,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
   // Buffer calculation for Y-Axis scaling
   const getYDomain = (dataKey: string) => {
     const vals = chartData.map(d => (d as any)[dataKey]);
+    if (vals.length === 0) return [0, 1];
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     const range = Math.max(0.1, max - min);
@@ -104,11 +105,11 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
             </div>
           </div>
           
-          {ildMode === ILDType.REACTION && (
+          {ildMode === ILDType.REACTION && results.reactions.length > 0 && (
             <div className="flex items-center space-x-3">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Support:</span>
               <select 
-                value={selectedReactionId} 
+                value={selectedReactionId || (results.reactions[0]?.id)} 
                 onChange={(e) => setSelectedReactionId(e.target.value)}
                 className="bg-white border border-slate-200 rounded-lg px-4 py-1.5 text-[10px] font-black outline-none cursor-pointer focus:border-indigo-500"
               >
@@ -126,7 +127,6 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
             <LineChart data={filteredIldData} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
               <XAxis dataKey="x" tick={{fontSize: 10, fontWeight: 600}} unit="m" />
-              {/* Removed unsupported 'nice' prop to fix TypeScript error */}
               <YAxis tick={{fontSize: 10, fontWeight: 600}} domain={['auto', 'auto']} />
               <Tooltip 
                 contentStyle={{ fontSize: '11px', fontWeight: 'bold', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} 
@@ -144,7 +144,6 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ results, config, po
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
               <XAxis dataKey="x" tick={{fontSize: 10, fontWeight: 600}} unit="m" />
-              {/* Removed unsupported 'nice' prop to fix TypeScript error */}
               <YAxis 
                 tick={{fontSize: 10, fontWeight: 600}} 
                 domain={activeView === 'sfd' ? getYDomain('shear') : activeView === 'bmd' ? getYDomain('moment') : getYDomain('deflection')} 

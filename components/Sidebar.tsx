@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BeamConfig, Support, Load, SupportType, LoadType } from '../types';
 
 interface SidebarProps {
@@ -14,6 +14,59 @@ interface SidebarProps {
   displayRange: {start: number, end: number};
   setDisplayRange: (range: {start: number, end: number}) => void;
 }
+
+const DebouncedInput: React.FC<{
+  value: number;
+  onChange: (val: number) => void;
+  className?: string;
+  step?: string;
+  label?: string;
+  unit?: string;
+}> = ({ value, onChange, className, step = "0.1", label, unit }) => {
+  const [localValue, setLocalValue] = useState<string>(value.toString());
+
+  useEffect(() => {
+    if (parseFloat(localValue) !== value) {
+      setLocalValue(value.toString());
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valStr = e.target.value;
+    setLocalValue(valStr);
+    if (valStr !== "" && !valStr.endsWith(".") && !isNaN(parseFloat(valStr))) {
+      const parsed = parseFloat(valStr);
+      if (parsed !== value) {
+        onChange(parsed);
+      }
+    }
+  };
+
+  const handleBlur = () => {
+    const parsed = parseFloat(localValue);
+    if (!isNaN(parsed)) {
+      if (parsed !== value) onChange(parsed);
+      setLocalValue(parsed.toString());
+    } else {
+      setLocalValue(value.toString());
+    }
+  };
+
+  return (
+    <div className="relative">
+      {label && <span className="block text-[11px] font-black text-slate-100 uppercase mb-2 tracking-wide">{label}</span>}
+      <input 
+        type="text" 
+        inputMode="decimal"
+        value={localValue} 
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className={className} 
+      />
+      {unit && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-500 uppercase">{unit}</span>}
+    </div>
+  );
+};
 
 const Sidebar: React.FC<SidebarProps> = ({ 
   config, setConfig, supports, setSupports, loads, setLoads, 
@@ -75,21 +128,24 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-700/50 shadow-inner">
               <label className="block text-[10px] font-black text-indigo-300 uppercase mb-4 tracking-widest">Beam Geometry</label>
               <div className="space-y-4">
-                <div>
-                  <span className="block text-[11px] font-black text-slate-100 uppercase mb-2 tracking-wide">Span Length (m)</span>
-                  <input type="number" step="0.1" value={config.length} onChange={(e) => setConfig({ ...config, length: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:border-indigo-500 outline-none text-sm font-bold shadow-sm" />
-                </div>
-                <div>
-                  <span className="block text-[11px] font-black text-slate-100 uppercase mb-2 tracking-wide">Elasticity E (MPa)</span>
-                  <input type="number" value={config.elasticModulus} onChange={(e) => setConfig({ ...config, elasticModulus: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:border-indigo-500 outline-none text-sm font-bold shadow-sm" />
-                </div>
-                <div>
-                  <span className="block text-[11px] font-black text-slate-100 uppercase mb-2 tracking-wide">Inertia I (mm⁴)</span>
-                  <input type="number" value={config.momentOfInertia} onChange={(e) => setConfig({ ...config, momentOfInertia: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:border-indigo-500 outline-none text-sm font-bold shadow-sm" />
-                </div>
+                <DebouncedInput 
+                  label="Span Length (m)"
+                  value={config.length} 
+                  onChange={(val) => setConfig({ ...config, length: val })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:border-indigo-500 outline-none text-sm font-bold shadow-sm"
+                />
+                <DebouncedInput 
+                  label="Elasticity E (MPa)"
+                  value={config.elasticModulus} 
+                  onChange={(val) => setConfig({ ...config, elasticModulus: val })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:border-indigo-500 outline-none text-sm font-bold shadow-sm"
+                />
+                <DebouncedInput 
+                  label="Inertia I (mm⁴)"
+                  value={config.momentOfInertia} 
+                  onChange={(val) => setConfig({ ...config, momentOfInertia: val })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white focus:border-indigo-500 outline-none text-sm font-bold shadow-sm"
+                />
               </div>
             </div>
 
@@ -98,22 +154,18 @@ const Sidebar: React.FC<SidebarProps> = ({
                <div className="flex space-x-3">
                   <div className="flex-1">
                     <span className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Start</span>
-                    <input 
-                      type="number" 
-                      step="0.1" 
+                    <DebouncedInput 
                       value={displayRange.start} 
-                      onChange={(e) => setDisplayRange({ ...displayRange, start: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-indigo-500 outline-none text-xs font-bold" 
+                      onChange={(val) => setDisplayRange({ ...displayRange, start: val })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-indigo-500 outline-none text-xs font-bold"
                     />
                   </div>
                   <div className="flex-1">
                     <span className="block text-[9px] font-bold text-slate-400 uppercase mb-1">End</span>
-                    <input 
-                      type="number" 
-                      step="0.1" 
+                    <DebouncedInput 
                       value={displayRange.end} 
-                      onChange={(e) => setDisplayRange({ ...displayRange, end: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-indigo-500 outline-none text-xs font-bold" 
+                      onChange={(val) => setDisplayRange({ ...displayRange, end: val })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-indigo-500 outline-none text-xs font-bold"
                     />
                   </div>
                </div>
@@ -121,16 +173,12 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <div className="bg-indigo-900/10 p-5 rounded-2xl border border-indigo-900/30">
                <label className="block text-[10px] font-black text-indigo-400 uppercase mb-2 tracking-widest">Real-time Probe</label>
-               <div className="relative">
-                 <input 
-                   type="number" 
-                   step="0.01" 
-                   value={pointOfInterest} 
-                   onChange={(e) => setPointOfInterest(Math.min(config.length, Math.max(0, parseFloat(e.target.value) || 0)))}
-                   className="w-full bg-slate-900 border border-indigo-800/40 rounded-xl px-4 py-3 text-white focus:border-indigo-500 outline-none text-sm font-bold pr-10" 
-                 />
-                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-500 uppercase">m</span>
-               </div>
+               <DebouncedInput 
+                  value={pointOfInterest} 
+                  onChange={(val) => setPointOfInterest(val)}
+                  className="w-full bg-slate-900 border border-indigo-800/40 rounded-xl px-4 py-3 text-white focus:border-indigo-500 outline-none text-sm font-bold pr-10"
+                  unit="m"
+                />
             </div>
           </div>
         )}
@@ -160,8 +208,11 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                 <div className="flex items-center space-x-3">
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Location:</span>
-                  <input type="number" step="0.1" value={s.position} onChange={(e) => updateSupport(s.id, { position: parseFloat(e.target.value) || 0 })}
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-indigo-500 transition-colors" />
+                  <DebouncedInput 
+                    value={s.position} 
+                    onChange={(val) => updateSupport(s.id, { position: val })}
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-indigo-500 transition-colors"
+                  />
                 </div>
               </div>
             ))}
@@ -194,28 +245,40 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className="grid grid-cols-2 gap-3 mb-3">
                    <div>
                       <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">{l.type === LoadType.UVL ? 'W1 (kN/m)' : 'Value'}:</span>
-                      <input type="number" step="0.1" value={l.magnitude} onChange={(e) => updateLoad(l.id, { magnitude: parseFloat(e.target.value) || 0 })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-emerald-500 transition-colors" />
+                      <DebouncedInput 
+                        value={l.magnitude} 
+                        onChange={(val) => updateLoad(l.id, { magnitude: val })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-emerald-500 transition-colors"
+                      />
                    </div>
                    {l.type === LoadType.UVL && (
                     <div>
                       <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">W2 (kN/m):</span>
-                      <input type="number" step="0.1" value={l.endMagnitude} onChange={(e) => updateLoad(l.id, { endMagnitude: parseFloat(e.target.value) || 0 })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-emerald-500 transition-colors" />
+                      <DebouncedInput 
+                        value={l.endMagnitude ?? 0} 
+                        onChange={(val) => updateLoad(l.id, { endMagnitude: val })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-emerald-500 transition-colors"
+                      />
                     </div>
                    )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                    <div>
                       <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">Start X (m):</span>
-                      <input type="number" step="0.1" value={l.position} onChange={(e) => updateLoad(l.id, { position: parseFloat(e.target.value) || 0 })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-emerald-500 transition-colors" />
+                      <DebouncedInput 
+                        value={l.position} 
+                        onChange={(val) => updateLoad(l.id, { position: val })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-emerald-500 transition-colors"
+                      />
                    </div>
                    {(l.type === LoadType.UDL || l.type === LoadType.UVL) && (
                     <div>
                       <span className="text-[10px] font-black text-slate-500 uppercase mb-2 block tracking-widest">End X (m):</span>
-                      <input type="number" step="0.1" value={l.endPosition} onChange={(e) => updateLoad(l.id, { endPosition: parseFloat(e.target.value) || 0 })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-emerald-500 transition-colors" />
+                      <DebouncedInput 
+                        value={l.endPosition ?? 0} 
+                        onChange={(val) => updateLoad(l.id, { endPosition: val })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-bold focus:border-emerald-500 transition-colors"
+                      />
                     </div>
                    )}
                 </div>

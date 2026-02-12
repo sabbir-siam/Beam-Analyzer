@@ -9,10 +9,9 @@ interface SchematicViewProps {
   results: AnalysisResults | null;
   pointOfInterest: number;
   setPointOfInterest: (x: number) => void;
-  onReset: () => void;
 }
 
-const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, results, pointOfInterest, setPointOfInterest, onReset }) => {
+const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, results, pointOfInterest, setPointOfInterest }) => {
   const width = 800;
   const height = 280;
   const margin = 80;
@@ -21,22 +20,31 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
 
   const toX = (x: number) => margin + x * scaleX;
 
-  // Global scale for distributed loads to prevent vertical overflow
   const distributedLoads = loads.filter(l => l.type === LoadType.UDL || l.type === LoadType.UVL);
   const maxDistLoadMagnitude = distributedLoads.reduce((max, l) => {
     const m1 = Math.abs(l.magnitude);
     const m2 = Math.abs(l.endMagnitude ?? 0);
     return Math.max(max, m1, m2);
-  }, 1); // Baseline of 1 to avoid division by zero
+  }, 1);
 
-  const MAX_VISUAL_LOAD_HEIGHT = 80; // Maximum visual height in pixels for the largest distributed load
+  const MAX_VISUAL_LOAD_HEIGHT = 80;
 
   return (
     <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-xl p-6 sm:p-8 relative">
-      {/* Interactive Controls Header */}
       <div className="flex flex-wrap items-center justify-between mb-8 gap-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Interactive Schematic</h3>
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex flex-col">
+            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Interactive Schematic</h3>
+            {results && (
+              <div className="flex items-center gap-2 mt-1 animate-fadeIn">
+                <div className={`w-1.5 h-1.5 rounded-full ${results.isStable ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${results.isStable ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {results.isStable ? 'System in Equilibrium' : 'Geometric Instability'}
+                </span>
+              </div>
+            )}
+          </div>
+          
           <div className="flex items-center space-x-3 bg-slate-50 px-4 py-2 rounded-full border border-slate-100">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Probe</span>
             <input 
@@ -56,13 +64,6 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
             <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
             <span className="text-xl font-black text-white font-mono">{pointOfInterest.toFixed(2)}<span className="text-[10px] text-slate-500 ml-1 uppercase">m</span></span>
           </div>
-          <button 
-            onClick={onReset}
-            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl flex items-center space-x-2 transition-all active:scale-95 shadow-lg shadow-red-100/50"
-          >
-            <i className="fas fa-undo-alt text-xs"></i>
-            <span className="text-[10px] font-black uppercase tracking-widest">Reset</span>
-          </button>
         </div>
       </div>
 
@@ -78,21 +79,16 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
             </marker>
           </defs>
 
-          {/* Dimension Line with Ticks (No horizontal arrows) */}
           <g transform={`translate(0, ${beamY + 60})`}>
             <line x1={margin} y1="0" x2={width - margin} y2="0" stroke="#cbd5e1" strokeWidth="2" />
-            {/* Start Tick */}
             <line x1={margin} y1="-8" x2={margin} y2="8" stroke="#94a3b8" strokeWidth="2" />
             <text x={margin} y="22" textAnchor="middle" className="text-[10px] font-black fill-slate-400">0 m</text>
-            {/* End Tick */}
             <line x1={width - margin} y1="-8" x2={width - margin} y2="8" stroke="#94a3b8" strokeWidth="2" />
             <text x={width - margin} y="22" textAnchor="middle" className="text-[10px] font-black fill-slate-400">{config.length.toFixed(2)} m</text>
           </g>
 
-          {/* Beam Body */}
           <line x1={margin} y1={beamY} x2={width - margin} y2={beamY} stroke="#0f172a" strokeWidth="8" strokeLinecap="round" />
 
-          {/* Supports */}
           {supports.map((s) => {
             const x = toX(s.position);
             if (s.type === SupportType.PINNED) {
@@ -130,7 +126,6 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
             return null;
           })}
 
-          {/* Loads */}
           {loads.map((l) => {
             const x = toX(l.position);
             if (l.type === LoadType.POINT) {
@@ -144,8 +139,6 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
             if (l.type === LoadType.UDL || l.type === LoadType.UVL) {
                const xEnd = toX(l.endPosition || config.length);
                const udlWidth = Math.max(0, xEnd - x);
-               
-               // Vertical height is scaled relative to the maximum distributed load found
                const hStart = (Math.abs(l.magnitude) / maxDistLoadMagnitude) * MAX_VISUAL_LOAD_HEIGHT;
                const hEnd = l.type === LoadType.UVL 
                   ? (Math.abs(l.endMagnitude ?? 0) / maxDistLoadMagnitude) * MAX_VISUAL_LOAD_HEIGHT 
@@ -155,15 +148,12 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
                  <g key={l.id} transform={`translate(${x}, ${beamY - 4})`}>
                    <path d={`M 0,${-hStart} L ${udlWidth},${-hEnd}`} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4 2" />
                    <rect x="0" y={-Math.max(hStart, hEnd)} width={udlWidth} height={Math.max(hStart, hEnd)} fill="rgba(239, 68, 68, 0.08)" />
-                   
-                   {/* Vertical lines */}
                    {Array.from({length: Math.max(2, Math.floor(udlWidth / 30))}).map((_, j) => {
                       const ratio = j / (Math.max(2, Math.floor(udlWidth / 30)) - 1);
                       const lx = ratio * udlWidth;
                       const h = hStart + (hEnd - hStart) * ratio;
                       return <line key={j} x1={lx} y1={-h} x2={lx} y2="-2" stroke="#ef4444" strokeWidth="1.5" />;
                    })}
-                   
                    <text x={udlWidth/2} y={-Math.max(hStart, hEnd) - 10} textAnchor="middle" className="text-[11px] font-black fill-red-700">
                       {l.type === LoadType.UVL ? `${l.magnitude} → ${l.endMagnitude} kN/m` : `${l.magnitude} kN/m`}
                    </text>
@@ -181,7 +171,6 @@ const SchematicView: React.FC<SchematicViewProps> = ({ config, supports, loads, 
             return null;
           })}
 
-          {/* Interactive Probe Marker */}
           <g transform={`translate(${toX(pointOfInterest)}, ${beamY})`}>
              <line x1="0" y1="-120" x2="0" y2="120" stroke="#3b82f6" strokeWidth="2" strokeDasharray="6 3" />
              <circle cx="0" cy="0" r="7" fill="white" stroke="#3b82f6" strokeWidth="3" />
