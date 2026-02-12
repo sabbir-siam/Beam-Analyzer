@@ -1,0 +1,5 @@
+{
+  "name": "Beam Analyzer",
+  "description": "A professional structural engineering tool for real-time beam analysis using the Matrix Stiffness Method. Supports complex loads, multiple supports, and provides detailed calculation reports with formulas.",
+  "requestFramePermissions": []
+}
