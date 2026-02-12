@@ -93,8 +93,6 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
   const I = config.momentOfInertia;
   
   // Base physical constants scaling
-  // MKS: m, kN, mm, MPa -> Internal: m, N
-  // FPS: ft, kip, in, ksi -> Internal: ft, kip
   let EI: number;
   let forceFactor: number;
   let deflectionFactor: number;
@@ -104,9 +102,6 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
     forceFactor = 1000; // kN to N
     deflectionFactor = 1000; // m to mm
   } else {
-    // E in ksi, I in in^4
-    // 1 ksi = 144 ksf (kip/ft^2)
-    // 1 in^4 = 1/20736 ft^4
     EI = (E * 144) * (I / 20736); // kip.ft^2
     forceFactor = 1; // kip is base force
     deflectionFactor = 12; // ft to in
@@ -310,25 +305,24 @@ export function analyzeBeam(config: BeamConfig, supports: Support[], loads: Load
   const hingesCount = hingeNodes.size;
   const isStable = reactionCount >= 3;
 
-  if (isStable) {
-    const steps = 30; 
-    for (let i = 0; i <= steps; i++) {
-      const x = (i / steps) * L;
-      const unitLoad = [{ id: 'unit', type: LoadType.POINT, magnitude: 1, position: x }];
-      const F_ild = buildLoadVector(unitLoad);
-      const U_ild = solver.solve(F_ild); 
-      
-      supports.forEach(s => {
-        if(s.type === SupportType.HINGE) return;
-        const nIdx = findClosestNodeIndex(finalNodes, s.position);
-        ildReactions[s.id].push({ x, value: (penalty * U_ild[nIdx * 2]) / -forceFactor });
-      });
+  // Calculate ILDs regardless of stability as requested by the user
+  const steps = 30; 
+  for (let i = 0; i <= steps; i++) {
+    const x = (i / steps) * L;
+    const unitLoad = [{ id: 'unit', type: LoadType.POINT, magnitude: 1, position: x }];
+    const F_ild = buildLoadVector(unitLoad);
+    const U_ild = solver.solve(F_ild); 
+    
+    supports.forEach(s => {
+      if(s.type === SupportType.HINGE) return;
+      const nIdx = findClosestNodeIndex(finalNodes, s.position);
+      ildReactions[s.id].push({ x, value: (penalty * U_ild[nIdx * 2]) / -forceFactor });
+    });
 
-      const side = x <= probeX ? 'right' : 'left'; 
-      const int_ild = getInternalAt(U_ild, probeX, unitLoad, side);
-      ildShearAtProbe.push({ x, value: int_ild.shear });
-      ildMomentAtProbe.push({ x, value: int_ild.moment });
-    }
+    const side = x <= probeX ? 'right' : 'left'; 
+    const int_ild = getInternalAt(U_ild, probeX, unitLoad, side);
+    ildShearAtProbe.push({ x, value: int_ild.shear });
+    ildMomentAtProbe.push({ x, value: int_ild.moment });
   }
 
   return {
